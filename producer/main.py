@@ -207,11 +207,25 @@ class F1TelemetryProducer:
         else:
             print(f"Transmitiendo {total_records} registros intercalados en tiempo real...")
 
+        previous_date = None
+        previous_real_time = None
+
         for _, row in merged_telemetry.iterrows():
+            current_date = row['Date']
+
+            if previous_date is not None:
+                historical_delta = (current_date - previous_date).total_seconds()
+                real_delta = time.perf_counter() - previous_real_time
+                remaining_delay = historical_delta - real_delta
+
+                if remaining_delay > 0:
+                    time.sleep(remaining_delay)
+
             payload = self._build_payload(row, row['target_driver'], year, race)
             self.publish_event(payload)
-            if delay > 0:
-                time.sleep(delay)
+
+            previous_date = current_date
+            previous_real_time = time.perf_counter()
 
         print("Transmisión de telemetría simulada completada.")
 
