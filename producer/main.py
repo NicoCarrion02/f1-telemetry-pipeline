@@ -221,11 +221,11 @@ class F1TelemetryProducer:
                 if remaining_delay > 0:
                     time.sleep(remaining_delay)
 
-            payload = self._build_payload(row, row['target_driver'], year, race)
-            self.publish_event(payload)
-
             previous_date = current_date
             previous_real_time = time.perf_counter()
+
+            payload = self._build_payload(row, row['target_driver'], year, race)
+            self.publish_event(payload)
 
         print("Transmisión de telemetría simulada completada.")
 
