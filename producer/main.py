@@ -143,7 +143,7 @@ class F1TelemetryProducer:
             self._run_replay_interleaved(session, drivers, year, race, delay, limit_records)
 
     def _build_payload(self, row, driver_str: str, year: int, race: str) -> dict:
-        """Construye el payload compatible con el pipeline de streaming Spark/BigQuery."""
+        """Construye el payload compatible con el pipeline de telemetría en tiempo real (Pub/Sub, BigQuery y Dashboard)."""
         try:
             driver_num = int(driver_str)
         except ValueError:

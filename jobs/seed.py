@@ -211,7 +211,7 @@ def stream_all_drivers_telemetry(
     """
     Paso 4: Transmite en tiempo real la telemetría de TODOS los pilotos de TODAS
     las escuderías (Ferrari, Red Bull, Mercedes, McLaren, etc.), intercalada
-    cronológicamente para alimentar el pipeline en streaming (Pub/Sub -> Spark -> BigQuery).
+    cronológicamente para alimentar el pipeline en streaming (Pub/Sub -> BigQuery / Dashboard).
     """
     # Sincronizar caché de FastF1 con GCS antes de iniciar el streaming
     sync_fastf1_cache()
