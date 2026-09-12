@@ -112,6 +112,8 @@ class F1TelemetryProducer:
         Si concurrent=False, combina la telemetría de todos los pilotos ordenándola cronológicamente,
         simulando la carrera en tiempo real sincronizado entre todas las escuderías.
         """
+        session = self.load_replay_session(year, race, session_type)
+
         if not drivers or drivers == "all" or drivers == ["all"]:
             drivers = list(session.drivers)
             print(f"Detectados {len(drivers)} pilotos de todas las escuderías en la sesión.")
@@ -119,7 +121,6 @@ class F1TelemetryProducer:
             # Convertir elementos de drivers a string
             drivers = [str(d).strip() for d in drivers]
 
-        session = self.load_replay_session(year, race, session_type)
         driver_meta = self.get_session_driver_team_map(session)
 
         print(f"\n--- Iniciando Replay para {len(drivers)} pilotos en {race} {year} ---")

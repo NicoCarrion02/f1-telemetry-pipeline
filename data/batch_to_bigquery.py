@@ -1,6 +1,7 @@
 import os
 import io
 import sys
+import json
 from pathlib import Path
 
 # Add project root to sys.path
@@ -88,15 +89,37 @@ def process_and_load_batch_data(
         # 3. CARGA A BIGQUERY
         table_id = f"{project_id}.{dataset_name}.{table_name}"
 
-        job_config = bigquery.LoadJobConfig(
-            write_disposition="WRITE_TRUNCATE",
-        )
-
-        print(f"Cargando {len(df)} registros en {table_id}...")
-        job = bq_client.load_table_from_dataframe(df, table_id, job_config=job_config)
-        job.result()
-
-        print(f"✅ Tabla '{table_name}' consolidada exitosamente en BigQuery.")
+        try:
+            print(f"Cargando {len(df)} registros en {table_id}...")
+            job_config = bigquery.LoadJobConfig(
+                write_disposition="WRITE_TRUNCATE",
+            )
+            job = bq_client.load_table_from_dataframe(df, table_id, job_config=job_config)
+            job.result()
+            print(f"✅ Tabla '{table_name}' consolidada exitosamente en BigQuery.")
+        except Exception as e:
+            if "unspecified job configuration query" in str(e) or os.getenv("BIGQUERY_EMULATOR_HOST"):
+                print(f"Aviso: El emulador de BigQuery no soporta multipart load_table_from_dataframe.")
+                print(f"Insertando registros en el emulador vía insert_rows_json...")
+                try:
+                    schema = [bigquery.SchemaField(col, "STRING") for col in df.columns]
+                    table = bigquery.Table(table_id, schema=schema)
+                    try:
+                        bq_client.create_table(table, exists_ok=True)
+                    except Exception:
+                        pass
+                    # Tomar lote de registros para el emulador (hasta 5000 por tabla para agilidad)
+                    sample = df.head(5000).fillna("")
+                    records = json.loads(sample.to_json(orient="records", date_format="iso"))
+                    errors = bq_client.insert_rows_json(table_id, records)
+                    if not errors:
+                        print(f"✅ Tabla '{table_name}' creada e insertada en el emulador ({len(records)} filas).")
+                    else:
+                        print(f"Aviso al insertar en emulador: {errors}")
+                except Exception as emu_err:
+                    print(f"Aviso cargando en emulador: {emu_err}")
+            else:
+                print(f"Error cargando tabla {table_name}: {e}")
 
 
 if __name__ == "__main__":

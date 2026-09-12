@@ -6,6 +6,7 @@ db-dtypes
 
 # Data Processing & Streaming
 pandas
+pandas-gbq
 pyarrow
 
 # F1 Data Sources & APIs
