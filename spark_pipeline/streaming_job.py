@@ -36,6 +36,7 @@ def get_spark_session():
     spark = SparkSession.builder \
         .appName("F1_Stream_Batch_Processor") \
         .config("spark.driver.bindAddress", "127.0.0.1") \
+        .config("spark.sql.execution.arrow.pyspark.enabled", "false") \
         .getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
     return spark
@@ -93,14 +94,12 @@ def process_stream():
                     "left"
                 ).drop("driver_number_batch")
                 
-                # 4. CONVERTIR A PANDAS E INSERTAR EN BIGQUERY
-                pdf = enriched_df.toPandas()
-                if not pdf.empty:
-                    print(f"Escribiendo lote de {len(pdf)} registros en BigQuery...")
-                    errors = bq_client.insert_rows_from_dataframe(
-                        bq_client.get_table(TABLE_ID), 
-                        pdf
-                    )
+                # 4. RECOLECTAR A PYTHON Y ESCRIBIR EN BIGQUERY
+                rows_to_insert = [row.asDict() for row in enriched_df.collect()]
+                
+                if rows_to_insert:
+                    print(f"Escribiendo lote de {len(rows_to_insert)} registros en BigQuery...")
+                    errors = bq_client.insert_rows_json(TABLE_ID, rows_to_insert)
                     if errors == []:
                         print("Lote insertado exitosamente en BigQuery.\n")
                     else:
