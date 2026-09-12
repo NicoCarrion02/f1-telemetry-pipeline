@@ -32,16 +32,19 @@ services:
       - bigquery
     restart: unless-stopped
 
-  # Productor de Telemetría F1
+  # Orquestador Principal y Productor de Telemetría (jobs/seed.py)
   f1-producer:
     build:
       context: .
       dockerfile: docker/producer.Dockerfile
-    command: ["--mode", "replay"]
+    container_name: f1-producer
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/gcp-service-account.json
       - GCP_PROJECT_ID=f1-telemetry-ec
       - PUB_SUB_TOPIC=f1-telemetry-topic
+      - GCS_BUCKET_NAME=f1-batch-data-lake-ec
+      - BIGQUERY_DATASET=f1_insights
+      - BIGQUERY_TABLE=telemetry_realtime
       - BIGQUERY_EMULATOR_HOST=http://bigquery:9050
       - DASHBOARD_INGEST_URL=http://f1-dashboard:8000/api/telemetry/ingest
     volumes:

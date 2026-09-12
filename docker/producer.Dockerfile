@@ -4,11 +4,13 @@ WORKDIR /app
 
 # Instalar dependencias necesarias
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el código y credenciales
+# Copiar el código del proyecto necesario para el orquestador
 COPY config/ ./config/
+COPY data/ ./data/
+COPY jobs/ ./jobs/
 COPY producer/ ./producer/
 
 ENV PYTHONUNBUFFERED=1
-ENTRYPOINT ["python", "producer/main.py"]
+ENTRYPOINT ["python", "jobs/seed.py"]
