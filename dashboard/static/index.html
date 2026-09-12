@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 Real-Time Telemetry Cockpit</title>
+    <meta name="description" content="Dashboard de telemetría de Fórmula 1 en tiempo real con mapa de pista 2D interactivo, tacómetro, velocímetro y tabla de escuderías.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- App Container -->
+    <div class="f1-app">
+        <!-- Top Navigation Bar -->
+        <header class="f1-header">
+            <div class="header-left">
+                <div class="f1-logo-badge">
+                    <span class="f1-logo-text">F1</span>
+                    <span class="f1-title">TELEMETRY COCKPIT</span>
+                </div>
+                <div class="session-badge" id="session-info">
+                    <span class="label">SESSION</span>
+                    <span class="val" id="session-id">MONZA 2023 [R]</span>
+                </div>
+            </div>
+
+            <div class="header-center">
+                <div class="live-clock-container">
+                    <span class="clock-label">RACE TIMESTAMP</span>
+                    <span class="clock-val" id="telemetry-timestamp">--:--:--.---</span>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <div class="connection-status" id="connection-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">CONNECTING...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Driver Selector Bar -->
+        <section class="driver-roster-bar" id="driver-roster-bar">
+            <button class="driver-pill active" data-driver="ALL">
+                <span class="driver-num">ALL</span>
+                <span class="driver-code">GRID</span>
+            </button>
+            <!-- Dynamic driver pills generated via JS -->
+        </section>
+
+        <!-- Main Dashboard Layout -->
+        <main class="dashboard-grid">
+            <!-- Left Column: 2D Live Track Map -->
+            <div class="panel track-panel">
+                <div class="panel-header">
+                    <h2>CIRCUIT GPS TRACK MAP</h2>
+                    <div class="track-legend" id="track-legend">
+                        <span class="legend-hint">Live 2D telemetry car coordinates</span>
+                    </div>
+                </div>
+                <div class="canvas-container">
+                    <canvas id="trackCanvas"></canvas>
+                    <div class="map-overlay-info">
+                        <span id="active-cars-count">Cars on track: 0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Single Driver Cockpit Gauges -->
+            <div class="panel cockpit-panel">
+                <div class="panel-header">
+                    <h2 id="cockpit-driver-title">FOCUSED COCKPIT: #16 LEC (FERRARI)</h2>
+                    <span class="constructor-tag" id="cockpit-team-tag">FERRARI</span>
+                </div>
+
+                <!-- Shift Lights (Tachometer LED Bar) -->
+                <div class="shift-lights-bar" id="shift-lights">
+                    <span class="light green"></span>
+                    <span class="light green"></span>
+                    <span class="light green"></span>
+                    <span class="light red"></span>
+                    <span class="light red"></span>
+                    <span class="light red"></span>
+                    <span class="light purple"></span>
+                    <span class="light purple"></span>
+                </div>
+
+                <!-- Primary Cockpit Metrics: Speed & Gear -->
+                <div class="primary-gauges">
+                    <!-- Gear Box -->
+                    <div class="gauge-card gear-card">
+                        <span class="gauge-label">GEAR</span>
+                        <div class="gear-display" id="gauge-gear">N</div>
+                        <span class="rpm-display" id="gauge-rpm">0 RPM</span>
+                    </div>
+
+                    <!-- Speedometer -->
+                    <div class="gauge-card speed-card">
+                        <span class="gauge-label">SPEED</span>
+                        <div class="speed-number-wrap">
+                            <span class="speed-val" id="gauge-speed">0</span>
+                            <span class="speed-unit">KM/H</span>
+                        </div>
+                        <div class="speed-bar-track">
+                            <div class="speed-bar-fill" id="speed-bar"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pedals Telemetry: Throttle & Brake -->
+                <div class="pedals-deck">
+                    <!-- Throttle -->
+                    <div class="pedal-gauge throttle-gauge">
+                        <div class="pedal-meta">
+                            <span class="pedal-name">THROTTLE</span>
+                            <span class="pedal-pct" id="throttle-pct">0%</span>
+                        </div>
+                        <div class="pedal-bar-track">
+                            <div class="pedal-bar-fill throttle-fill" id="throttle-bar"></div>
+                        </div>
+                    </div>
+
+                    <!-- Brake -->
+                    <div class="pedal-gauge brake-gauge">
+                        <div class="pedal-meta">
+                            <span class="pedal-name">BRAKE</span>
+                            <span class="pedal-pct" id="brake-pct">0%</span>
+                        </div>
+                        <div class="pedal-bar-track">
+                            <div class="pedal-bar-fill brake-fill" id="brake-bar"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Coordinates & Session Details -->
+                <div class="telemetry-meta-row">
+                    <div class="meta-item">
+                        <span class="meta-title">X POS</span>
+                        <span class="meta-data" id="meta-x">0</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-title">Y POS</span>
+                        <span class="meta-data" id="meta-y">0</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-title">EVENTS SEEN</span>
+                        <span class="meta-data" id="meta-events">0</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Bottom Panel: Multi-Driver Live Grid Leaderboard -->
+        <footer class="leaderboard-panel panel">
+            <div class="panel-header">
+                <h2>GRID TELEMETRY OVERVIEW (CONSTRUCTORS & DRIVERS)</h2>
+                <span class="leaderboard-status">REAL-TIME INGESTION ACTIVE</span>
+            </div>
+            <div class="table-responsive">
+                <table class="leaderboard-table" id="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th>CAR #</th>
+                            <th>DRIVER</th>
+                            <th>CONSTRUCTOR</th>
+                            <th>SPEED</th>
+                            <th>GEAR</th>
+                            <th>RPM</th>
+                            <th>THROTTLE</th>
+                            <th>BRAKE</th>
+                            <th>LATEST UPDATE</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-body">
+                        <!-- Injected via JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Application Script -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

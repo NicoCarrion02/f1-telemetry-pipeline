@@ -1,4 +1,0 @@
-fastf1
-requests
-google-cloud-pubsub
-python-dotenv

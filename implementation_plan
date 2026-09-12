@@ -1,0 +1,132 @@
+# Implementation Plan: Real-Time F1 Telemetry Dashboard
+
+Design and implement a real-time telemetry dashboard to visualize live multi-driver Formula 1 metrics (speed, RPM, gear, throttle, brake, track position X/Y) ingested into BigQuery and Pub/Sub.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Dashboard Technology Options**:
+> 1. **Option A (Recommended - High-Performance Web App)**: **FastAPI + WebSockets + Modern Vanilla Frontend (HTML5 Canvas + Chart.js)**.
+>    - True real-time sub-second streaming via WebSockets.
+>    - Live 2D Track Map visualizing car coordinates (`x_pos`, `y_pos`) moving across the circuit.
+>    - F1 Dark Cockpit aesthetics: Live speedometers, RPM gauge, throttle/brake pedal bars, gear indicators, and driver selector.
+> 2. **Option B (Python-Only)**: **Streamlit**.
+>    - Built entirely in Python using `streamlit`. Auto-refreshes periodically (1–2s interval).
+>    - Simpler to maintain in pure Python, but less fluid for real-time 60fps track animations.
+
+> [!NOTE]
+> **Data Feed Strategy for Real-Time Visuals**:
+> - The dashboard can query **BigQuery** (`f1_insights.telemetry_realtime`) for latest windowed data or recent batch aggregates, AND/OR subscribe directly to **Pub/Sub** or a lightweight broadcast socket from the pipeline to stream events with minimal latency.
+
+---
+
+## Proposed Architecture
+
+```mermaid
+flowchart LR
+    subgraph DataSources ["📡 Ingestion Layer"]
+        BQ["BigQuery Table<br>telemetry_realtime"]
+        PubSub["Pub/Sub Topic<br>f1-telemetry-topic"]
+    end
+
+    subgraph Backend ["⚙️ Dashboard Backend (dashboard/server.py)"]
+        FastAPI["FastAPI App"]
+        WS["WebSocket Hub<br>(/ws/telemetry)"]
+        Poller["Live Event Streamer / BQ Reader"]
+        FastAPI --> WS
+        Poller --> WS
+        BQ -.-> Poller
+        PubSub -.-> Poller
+    end
+
+    subgraph Frontend ["🏎️ Live Cockpit UI (dashboard/static/)"]
+        TrackMap["Live 2D Track Canvas<br>(X/Y Car Positions)"]
+        TelemetryGauges["Speedometer & RPM Gauges<br>(Canvas / CSS)"]
+        PedalBars["Throttle / Brake Bars"]
+        DriverSelector["Driver & Constructor Roster"]
+        Leaderboard["Live Timing & Telemetry Cards"]
+        WS --> TrackMap
+        WS --> TelemetryGauges
+        WS --> PedalBars
+        WS --> Leaderboard
+    end
+```
+
+---
+
+## Proposed Changes
+
+### Dashboard Backend
+
+#### [NEW] [dashboard/server.py](file:///c:/Users/jairo/Documents/GitHub/f1-telemetry-pipeline/dashboard/server.py)
+- Build a FastAPI server providing:
+  - REST endpoints: `/api/drivers`, `/api/latest-telemetry`, `/api/track-layout` (derived from circuit coordinates).
+  - WebSocket endpoint: `/ws/telemetry` broadcasting live driver events (timestamp, driver number, name, team, speed, gear, throttle, brake, x, y).
+  - Background worker that streams real-time updates directly from the pipeline / BigQuery emulator / Pub/Sub.
+
+---
+
+### Dashboard Frontend
+
+#### [NEW] [dashboard/static/index.html](file:///c:/Users/jairo/Documents/GitHub/f1-telemetry-pipeline/dashboard/static/index.html)
+- Main interface layout with semantic markup:
+  - Header: Grand Prix status, session timer, connection indicator (Connected / Replaying).
+  - Main Panel: Split view with Live 2D Track Map on one side and Telemetry Cockpit on the other.
+  - Driver Selection Bar: Filter by driver (e.g. #1 Verstappen, #16 Leclerc, #44 Hamilton, #4 Norris) or view all cars simultaneously.
+  - Telemetry Telemetry Deck:
+    - Speedometer gauge (0–360 km/h).
+    - RPM tachometer with shift lights.
+    - Gear indicator (1–8).
+    - Throttle (green) and Brake (red) progress bars.
+  - Multi-Driver Comparison Table: Real-time leaderboard comparing speed, gear, and current sector position across constructors.
+
+#### [NEW] [dashboard/static/style.css](file:///c:/Users/jairo/Documents/GitHub/f1-telemetry-pipeline/dashboard/static/style.css)
+- Sleek F1 Dark Cockpit visual theme:
+  - Deep dark slate/carbon background (`#0d1117`, `#161b22`) with neon accents per constructor (Ferrari Red `#E80020`, Red Bull Blue `#3671C6`, Mercedes Cyan `#27F4D2`, McLaren Papaya `#FF8000`).
+  - Monospace telemetry font for digital gauges and numbers.
+  - Responsive layout for desktop and tablet screens.
+
+#### [NEW] [dashboard/static/app.js](file:///c:/Users/jairo/Documents/GitHub/f1-telemetry-pipeline/dashboard/static/app.js)
+- WebSocket client managing live telemetry feeds:
+  - Normalizes track coordinates (`x_pos`, `y_pos`) to fit the canvas viewport dynamically.
+  - Draws dynamic car markers on the circuit canvas in real time with constructor colors.
+  - Smoothly animates speedometers, RPM bars, and pedal levels using `requestAnimationFrame`.
+
+---
+
+### Docker & Dependencies
+
+#### [MODIFY] [requirements.txt](file:///c:/Users/jairo/Documents/GitHub/f1-telemetry-pipeline/requirements.txt)
+- Add lightweight dashboard dependencies:
+  - `fastapi`
+  - `uvicorn[standard]`
+  - `websockets`
+
+#### [MODIFY] [docker-compose.yml](file:///c:/Users/jairo/Documents/GitHub/f1-telemetry-pipeline/docker-compose.yml)
+- Add `f1-dashboard` service exposing port `8000:8000`.
+
+---
+
+## Verification Plan
+
+### Automated / CLI Verification
+1. Install dependencies and run syntax check:
+   ```powershell
+   python -m py_compile dashboard/server.py config/settings.py
+   ```
+2. Start dashboard server in test mode:
+   ```powershell
+   python -m uvicorn dashboard.server:app --port 8000
+   ```
+3. Test REST endpoints using curl or python requests:
+   - `http://localhost:8000/api/health`
+   - `http://localhost:8000/api/drivers`
+
+### Visual & Interactive Verification
+1. Launch dashboard in browser at `http://localhost:8000`.
+2. Run simulated telemetry stream (`python jobs/seed.py` or `python producer/main.py --mode replay`).
+3. Verify that:
+   - WebSocket connects successfully.
+   - Cars move smoothly on the 2D track canvas according to their X/Y positions.
+   - Telemetry gauges (speed, gear, RPM, throttle, brake) update dynamically in real time.
+   - Driver cards display accurate team colors and names.

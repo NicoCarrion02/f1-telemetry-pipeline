@@ -1,16 +1,53 @@
-version: '3.8'
-
 services:
+  # Servicio Local de BigQuery (Emulador REST en puerto 9050 / gRPC en 9060)
+  bigquery:
+    image: ghcr.io/goccy/bigquery-emulator:latest
+    container_name: f1-bigquery
+    command:
+      - --project=f1-telemetry-ec
+      - --dataset=f1_insights
+    ports:
+      - "9050:9050"   # Endpoint HTTP REST de BigQuery
+      - "9060:9060"   # Endpoint gRPC
+    environment:
+      - BIGQUERY_EMULATOR_HOST=http://0.0.0.0:9050
+    volumes:
+      - ./data/bigquery_data:/data
+    restart: unless-stopped
+
+  # Dashboard en Tiempo Real (FastAPI + WebSockets + Cockpit)
+  f1-dashboard:
+    build:
+      context: .
+      dockerfile: docker/dashboard.Dockerfile
+    container_name: f1-dashboard
+    ports:
+      - "8000:8000"
+    environment:
+      - GCP_PROJECT_ID=f1-telemetry-ec
+      - BIGQUERY_DATASET=f1_insights
+      - BIGQUERY_TABLE=telemetry_realtime
+      - BIGQUERY_EMULATOR_HOST=http://bigquery:9050
+    depends_on:
+      - bigquery
+    restart: unless-stopped
+
+  # Productor de Telemetría F1
   f1-producer:
     build:
       context: .
       dockerfile: docker/producer.Dockerfile
-    command: ["--mode", "replay", "--driver", "16"]
+    command: ["--mode", "replay"]
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/gcp-service-account.json
       - GCP_PROJECT_ID=f1-telemetry-ec
       - PUB_SUB_TOPIC=f1-telemetry-topic
+      - BIGQUERY_EMULATOR_HOST=http://bigquery:9050
+      - DASHBOARD_INGEST_URL=http://f1-dashboard:8000/api/telemetry/ingest
     volumes:
       - ./secrets:/app/secrets
       - ./data/raw:/app/data/raw
+    depends_on:
+      - bigquery
+      - f1-dashboard
     restart: on-failure
