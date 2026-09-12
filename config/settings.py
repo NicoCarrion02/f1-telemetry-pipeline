@@ -16,6 +16,9 @@ GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "f1-batch-data-lake-ec")
 GCS_DESTINATION_FOLDER = os.getenv("GCS_DESTINATION_FOLDER", "batch/")
 BIGQUERY_DATASET = os.getenv("BIGQUERY_DATASET", "f1_insights")
 BIGQUERY_TABLE = os.getenv("BIGQUERY_TABLE", "telemetry_realtime")
+BIGQUERY_EMULATOR_HOST = os.getenv("BIGQUERY_EMULATOR_HOST", "")
+if BIGQUERY_EMULATOR_HOST:
+    os.environ["BIGQUERY_EMULATOR_HOST"] = BIGQUERY_EMULATOR_HOST
 
 # Kaggle dataset configuration
 KAGGLE_DATASET_NAME = os.getenv("KAGGLE_DATASET_NAME", "rohanrao/formula-1-world-championship-1950-2020")

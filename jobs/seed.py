@@ -17,10 +17,12 @@ from config.settings import (
     KAGGLE_DATASET_NAME,
     LOCAL_RAW_PATH,
     TARGET_FILES,
+    BIGQUERY_DATASET,
     DEFAULT_REPLAY_YEAR,
     DEFAULT_REPLAY_RACE,
     DEFAULT_REPLAY_SESSION,
 )
+from data.batch_to_bigquery import process_and_load_batch_data
 from producer.main import F1TelemetryProducer
 
 load_dotenv()
@@ -103,6 +105,33 @@ def upload_to_gcs(
         return True
     except Exception as e:
         print(f"Aviso/Error al conectar con Google Cloud Storage: {e}")
+        print("Continuando con el flujo...")
+        return False
+
+
+def load_batch_to_bigquery(
+    project_id: str = GCP_PROJECT_ID,
+    bucket_name: str = GCS_BUCKET_NAME,
+    dataset_name: str = BIGQUERY_DATASET,
+    target_files: list = TARGET_FILES,
+) -> bool:
+    """
+    Paso 3: Procesa, limpia y carga los archivos batch desde GCS a BigQuery.
+    """
+    print("\n" + "=" * 70)
+    print(" PASO 3: ETL BATCH A BIGQUERY (GCS -> BIGQUERY)")
+    print("=" * 70)
+
+    try:
+        process_and_load_batch_data(
+            project_id=project_id,
+            bucket_name=bucket_name,
+            dataset_name=dataset_name,
+            target_files=target_files,
+        )
+        return True
+    except Exception as e:
+        print(f"Aviso/Error durante el proceso ETL Batch a BigQuery: {e}")
         print("Continuando con el flujo de streaming...")
         return False
 
@@ -114,12 +143,12 @@ def stream_all_drivers_telemetry(
     delay: float = 0.2,
 ):
     """
-    Paso 3: Transmite en tiempo real la telemetría de TODOS los pilotos de TODAS
+    Paso 4: Transmite en tiempo real la telemetría de TODOS los pilotos de TODAS
     las escuderías (Ferrari, Red Bull, Mercedes, McLaren, etc.), intercalada
     cronológicamente para alimentar el pipeline en streaming (Pub/Sub -> Spark -> BigQuery).
     """
     print("\n" + "=" * 70)
-    print(" PASO 3: STREAMING EN TIEMPO REAL - TODOS LOS PILOTOS Y ESCUDERÍAS")
+    print(" PASO 4: STREAMING EN TIEMPO REAL - TODOS LOS PILOTOS Y ESCUDERÍAS")
     print(f" Gran Premio: {race} {year} | Sesión: {session}")
     print("=" * 70)
 
@@ -136,23 +165,27 @@ def stream_all_drivers_telemetry(
 
 def run_pipeline():
     """
-    Orquestador principal sin necesidad de argumentos:
-    1. Descarga datos batch de Kaggle.
-    2. Sube los archivos batch al bucket de GCS.
-    3. Inicia la transmisión en tiempo real de todos los pilotos y empresas hacia la base de datos.
+    Orquestador principal del pipeline:
+    1. Descarga datos batch históricos de Kaggle.
+    2. Sube los archivos batch al Data Lake en Google Cloud Storage.
+    3. Procesa y consolida las tablas batch en BigQuery (ETL).
+    4. Inicia la transmisión en tiempo real de todos los pilotos y escuderías hacia Pub/Sub -> BigQuery.
     """
     print("*" * 70)
-    print("       INICIANDO PIPELINE DE TELEMETRÍA DE FORMULA 1")
+    print("       INICIANDO PIPELINE COMPLETO DE FORMULA 1 (BATCH + STREAMING)")
     print("*" * 70)
 
-    # 1. Descarga datos batch
+    # 1. Ingesta Batch: Kaggle -> Local
     download_kaggle_dataset()
 
-    # 2. Carga a Data Lake en GCS
+    # 2. Ingesta Data Lake: Local -> GCS
     upload_to_gcs()
 
-    # 3. Streaming en tiempo real de todos los pilotos
-    stream_all_drivers_telemetry()
+    # 3. ETL Data Warehouse: GCS -> BigQuery
+    load_batch_to_bigquery()
+
+    # 4. Streaming en tiempo real: Todos los pilotos -> Pub/Sub -> BigQuery
+    stream_all_drivers_telemetry(delay=0.2)
 
     print("\n" + "*" * 70)
     print("       PIPELINE EJECUTADO CON ÉXITO")
