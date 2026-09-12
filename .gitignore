@@ -2,3 +2,9 @@ secrets/
 .env
 data/raw/*
 hadoop_temp/*
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.DS_Store

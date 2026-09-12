@@ -1,0 +1,23 @@
+# Google Cloud Platform
+google-cloud-pubsub
+google-cloud-storage
+google-cloud-bigquery
+db-dtypes
+
+# Data Processing & Streaming
+pyspark
+pandas
+pyarrow
+
+# F1 Data Sources & APIs
+fastf1
+kagglehub
+requests
+
+# Environment & Configuration
+python-dotenv
+
+# Analysis & Visualization (Notebooks / EDA)
+ipykernel
+matplotlib
+seaborn
