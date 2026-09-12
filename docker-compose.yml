@@ -15,6 +15,23 @@ services:
       - ./data/bigquery_data:/data
     restart: unless-stopped
 
+  # Dashboard en Tiempo Real (FastAPI + WebSockets + Cockpit)
+  f1-dashboard:
+    build:
+      context: .
+      dockerfile: docker/dashboard.Dockerfile
+    container_name: f1-dashboard
+    ports:
+      - "8000:8000"
+    environment:
+      - GCP_PROJECT_ID=f1-telemetry-ec
+      - BIGQUERY_DATASET=f1_insights
+      - BIGQUERY_TABLE=telemetry_realtime
+      - BIGQUERY_EMULATOR_HOST=http://bigquery:9050
+    depends_on:
+      - bigquery
+    restart: unless-stopped
+
   # Productor de Telemetría F1
   f1-producer:
     build:
@@ -26,9 +43,11 @@ services:
       - GCP_PROJECT_ID=f1-telemetry-ec
       - PUB_SUB_TOPIC=f1-telemetry-topic
       - BIGQUERY_EMULATOR_HOST=http://bigquery:9050
+      - DASHBOARD_INGEST_URL=http://f1-dashboard:8000/api/telemetry/ingest
     volumes:
       - ./secrets:/app/secrets
       - ./data/raw:/app/data/raw
     depends_on:
       - bigquery
+      - f1-dashboard
     restart: on-failure

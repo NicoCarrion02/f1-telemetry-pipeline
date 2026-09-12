@@ -50,12 +50,19 @@ class F1TelemetryProducer:
         else:
             if not self.dry_run:
                 print("Aviso: GCP_PROJECT_ID o PUB_SUB_TOPIC no configurados. Operando en modo dry-run.")
-            self.dry_run = True
+        self.dashboard_url = os.getenv("DASHBOARD_INGEST_URL", "http://localhost:8000/api/telemetry/ingest")
 
     def publish_event(self, payload: dict):
         """Convierte el diccionario a JSON y lo publica en GCP Pub/Sub o en consola si es dry-run."""
         data_str = json.dumps(payload)
         
+        # Enviar copia al dashboard en tiempo real si está activo
+        if self.dashboard_url:
+            try:
+                requests.post(self.dashboard_url, json=payload, timeout=0.08)
+            except Exception:
+                pass
+
         if self.dry_run or not self.publisher:
             print(f"[DRY RUN EMIT]: {data_str}")
             return None
