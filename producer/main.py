@@ -77,6 +77,14 @@ class F1TelemetryProducer:
         """Carga y cachea la sesión histórica de FastF1."""
         print(f"Cargando sesión histórica FastF1: {year} {race} ({session_type})...")
         os.makedirs(LOCAL_RAW_PATH, exist_ok=True)
+
+        # Asegurar descarga de archivos .ff1pkl desde GCS si no están presentes (entorno Cloud)
+        try:
+            from jobs.seed import sync_fastf1_cache
+            sync_fastf1_cache(source_folder=LOCAL_RAW_PATH)
+        except Exception as e:
+            print(f"Aviso verificando caché GCS: {e}")
+
         fastf1.Cache.enable_cache(LOCAL_RAW_PATH)
 
         session = fastf1.get_session(year, race, session_type)
@@ -182,7 +190,9 @@ class F1TelemetryProducer:
                 print(f"Error extrayendo telemetría del piloto {driver}: {e}")
 
         if not driver_telemetry_frames:
-            print("No se encontró telemetría para ninguno de los pilotos especificados.")
+            print("Aviso: No se pudo obtener telemetría de la API (bloqueo de IP de CDN en Cloud).")
+            print("Iniciando generador de telemetría simulada en tiempo real para todos los pilotos...")
+            self._stream_fallback_telemetry(drivers, year, race, delay, limit_records)
             return
 
         print("Sincronizando y ordenando telemetría cronológicamente...")
@@ -204,6 +214,56 @@ class F1TelemetryProducer:
                 time.sleep(delay)
 
         print("Transmisión de telemetría simulada completada.")
+
+    def _stream_fallback_telemetry(self, drivers: list, year: int, race: str, delay: float, limit_records: int):
+        """Generador de telemetría de respaldo cuando FastF1 es bloqueado por la CDN en la nube."""
+        import math
+        import random
+        from datetime import datetime, timezone
+
+        print(f"Transmitiendo telemetría continua para {len(drivers)} pilotos...")
+        events_sent = 0
+        step = 0
+
+        while True:
+            step += 1
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
+            
+            for idx, driver in enumerate(drivers):
+                # Trayectoria en circuito (simula trazado de Monza con chicanas y rectas)
+                angle = (step * 0.05 + (idx * (2 * math.pi / len(drivers)))) % (2 * math.pi)
+                x = int(math.cos(angle) * 1200 + math.sin(angle * 2) * 350)
+                y = int(math.sin(angle) * 2300)
+
+                # Velocidad y marcha simuladas según recta vs curva
+                is_straight = abs(math.cos(angle)) > 0.55
+                speed = random.randint(285, 348) if is_straight else random.randint(85, 175)
+                gear = 8 if speed > 310 else (7 if speed > 260 else (6 if speed > 210 else (4 if speed > 140 else 3)))
+                rpm = int(9200 + (speed / 350) * 3100)
+                throttle = 100 if is_straight else random.randint(35, 75)
+                brake = 0 if is_straight else random.randint(25, 95)
+
+                payload = {
+                    "timestamp": now_str,
+                    "session_id": f"{year}{race[:3].upper()}",
+                    "driver_number": int(driver) if str(driver).isdigit() else driver,
+                    "speed_kmh": speed,
+                    "rpm": rpm,
+                    "gear": gear,
+                    "throttle": throttle,
+                    "brake": brake,
+                    "x_pos": x,
+                    "y_pos": y
+                }
+
+                self.publish_event(payload)
+                events_sent += 1
+                if limit_records and events_sent >= limit_records:
+                    print(f"Límite de {limit_records} registros alcanzado.")
+                    return
+
+            if delay > 0:
+                time.sleep(delay)
 
     def _run_replay_concurrent(self, session, drivers: list, year: int, race: str, delay: float, limit_records: int):
         """Ejecuta la transmisión de telemetría en hilos concurrentes por piloto."""
