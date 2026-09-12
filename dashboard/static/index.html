@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>F1 Real-Time Telemetry Cockpit</title>
     <meta name="description" content="Dashboard de telemetría de Fórmula 1 en tiempo real con mapa de pista 2D interactivo, tacómetro, velocímetro y tabla de escuderías.">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,7 +33,7 @@
             <div class="header-center">
                 <div class="live-clock-container">
                     <span class="clock-label">RACE TIMESTAMP</span>
-                    <span class="clock-val" id="telemetry-timestamp">--:--:--.---</span>
+                    <span class="clock-val" id="telemetry-timestamp">--:--:--</span>
                 </div>
             </div>
 
@@ -182,7 +185,7 @@
         </footer>
     </div>
 
-    <!-- Application Script -->
-    <script src="/static/app.js"></script>
+    <!-- Application Script with Cache Buster -->
+    <script src="/static/app.js?v=2"></script>
 </body>
 </html>

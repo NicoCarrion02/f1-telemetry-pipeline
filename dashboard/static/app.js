@@ -1,8 +1,7 @@
-// ==========================================================================
-// F1 Real-Time Telemetry Cockpit - Client Application
-// ==========================================================================
+console.log("🏎️ [F1 Cockpit] app.js loaded v2");
 
-document.addEventListener('DOMContentLoaded', () => {
+function initApp() {
+    console.log("🏎️ [F1 Cockpit] Initializing cockpit application...");
     // State Store
     const state = {
         selectedDriver: '16', // Default: Charles Leclerc
@@ -144,6 +143,78 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    // =========================================================================
+    // Clock & Race Timestamp Management
+    // =========================================================================
+    let clockSeconds = null;
+    let clockRunning = false;
+
+    function parseTimeToSeconds(ts) {
+        if (!ts || ts === 'NaT' || ts === 'None' || ts === 'null') return null;
+        const str = String(ts).trim();
+
+        // Check for HH:MM:SS or HH:MM:SS.mmm anywhere in string
+        const match = str.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+        if (match) {
+            const h = parseInt(match[1], 10);
+            const m = parseInt(match[2], 10);
+            const s = parseInt(match[3], 10);
+            return h * 3600 + m * 60 + s;
+        }
+
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) {
+            return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+        }
+        return null;
+    }
+
+    function formatSecondsToClock(totalSeconds) {
+        if (totalSeconds === null || isNaN(totalSeconds)) {
+            const now = new Date();
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+            return `${h}:${m}:${s}`;
+        }
+        const sMod = ((totalSeconds % 86400) + 86400) % 86400;
+        const h = String(Math.floor(sMod / 3600)).padStart(2, '0');
+        const m = String(Math.floor((sMod % 3600) / 60)).padStart(2, '0');
+        const s = String(sMod % 60).padStart(2, '0');
+        return `${h}:${m}:${s}`;
+    }
+
+    function formatTimeToSeconds(ts) {
+        console.log('formatting to secs', ts)
+        const sec = parseTimeToSeconds(ts);
+        if (sec !== null) {
+            return formatSecondsToClock(sec);
+        }
+        return '--:--:--';
+    }
+
+    function startClock() {
+        if (clockRunning) return;
+        clockRunning = true;
+
+        function tick() {
+            if (clockSeconds !== null) {
+                clockSeconds += 1;
+                console.log(clockSeconds);
+                elements.timestamp.textContent = formatSecondsToClock(clockSeconds);
+            } else {
+                const now = new Date();
+                const h = String(now.getHours()).padStart(2, '0');
+                const m = String(now.getMinutes()).padStart(2, '0');
+                const s = String(now.getSeconds()).padStart(2, '0');
+                console.log(h, m, s);
+                elements.timestamp.textContent = `${h}:${m}:${s}`;
+            }
+        }
+        tick();
+        setInterval(tick, 1000);
+    }
+
     // Handle Incoming Telemetry Message
     function handleTelemetryEvent(payload) {
         state.totalEvents++;
@@ -167,10 +238,16 @@ document.addEventListener('DOMContentLoaded', () => {
             last_seen: new Date()
         };
 
-        // Update race timestamp & session
-        if (payload.timestamp) {
-            elements.timestamp.textContent = payload.timestamp.split(' ')[1] || payload.timestamp;
+        // Initialize base race clock on first valid timestamp (data updates, but does NOT overwrite clock)
+        if (clockSeconds === null && payload.timestamp) {
+            const initialSec = parseTimeToSeconds(payload.timestamp);
+            if (initialSec !== null) {
+                clockSeconds = initialSec;
+                console.log('initial data', initialSec)
+                elements.timestamp.textContent = formatSecondsToClock(clockSeconds);
+            }
         }
+
         if (payload.session_id) {
             elements.sessionInfo.textContent = payload.session_id;
         }
@@ -291,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${d.rpm}</td>
                     <td style="color: var(--throttle-color);">${d.throttle}%</td>
                     <td style="color: var(--brake-color);">${d.brake}%</td>
-                    <td style="color: var(--text-muted); font-size: 0.8rem;">${d.timestamp ? d.timestamp.split(' ')[1] : ''}</td>
+                    <td style="color: var(--text-muted); font-size: 0.8rem;">${d.timestamp ? formatTimeToSeconds(d.timestamp) : ''}</td>
                 </tr>
             `;
         });
@@ -393,6 +470,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Start App
     loadDriverRoster();
+    startClock();
     connectWebSocket();
     requestAnimationFrame(renderTrack);
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}

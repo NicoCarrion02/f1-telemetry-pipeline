@@ -36,6 +36,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Prevent browser caching of static files and HTML during development
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 # Driver and Constructor Metadata
 CONSTRUCTOR_COLORS = {
     "Red Bull Racing": "#3671C6",
@@ -116,7 +125,20 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 async def get_index():
     index_file = STATIC_DIR / "index.html"
     if index_file.exists():
-        return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
+        content = index_file.read_text(encoding="utf-8")
+        import time
+        import re
+        ts = int(time.time() * 1000)
+        content = re.sub(r'/static/app\.js(\?[^"]*)?', f'/static/app.js?t={ts}', content)
+        content = re.sub(r'/static/style\.css(\?[^"]*)?', f'/static/style.css?t={ts}', content)
+        return HTMLResponse(
+            content=content,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     return HTMLResponse("<h1>F1 Telemetry Dashboard Loading...</h1>")
 
 
@@ -176,9 +198,9 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-# Tarea de fondo para consultar BigQuery periódicamente (si hay datos disponibles)
+# Tarea de fondo para consultar BigQuery periódicamente (cada segundo)
 async def bigquery_poller_task():
-    """Consulta las filas más recientes de BigQuery y las transmite si no hay stream activo."""
+    """Consulta las filas más recientes de BigQuery y las transmite cada segundo."""
     if not GCP_PROJECT_ID:
         return
 
@@ -186,36 +208,61 @@ async def bigquery_poller_task():
         from google.cloud import bigquery
         bq_client = bigquery.Client()
         table_id = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_TABLE}"
-        last_timestamp = None
+        last_seen_timestamp = None
 
         while True:
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(1.0)
             if not manager.active_connections:
                 continue
 
             try:
-                query = f"""
-                    SELECT timestamp, session_id, driver_number, speed_kmh, rpm, gear, throttle, brake, x_pos, y_pos, nombre, apellido, nacionalidad
-                    FROM `{table_id}`
-                    ORDER BY timestamp DESC
-                    LIMIT 20
-                """
-                query_job = bq_client.query(query)
-                results = list(query_job.result())
-                
-                # Transmitir en orden cronológico ascendente los más recientes
-                for row in reversed(results):
-                    row_dict = dict(row.items())
-                    row_dict["timestamp"] = str(row_dict["timestamp"])
+                def query_bigquery():
+                    # Usar SELECT * para compatibilidad con el esquema real
+                    query = f"""
+                        SELECT *
+                        FROM `{table_id}`
+                        ORDER BY timestamp DESC
+                        LIMIT 25
+                    """
+                    query_job = bq_client.query(query)
+                    return [dict(row.items()) for row in query_job.result()]
+
+                # Ejecutar consulta síncrona en hilo separado para evitar bloquear el event loop
+                results = await asyncio.to_thread(query_bigquery)
+                if not results:
+                    continue
+
+                # Filtrar solo filas más recientes si ya se tiene un cursor
+                new_rows = []
+                for row_dict in reversed(results):
+                    ts = str(row_dict.get("timestamp", ""))
+                    if last_seen_timestamp and ts <= last_seen_timestamp:
+                        continue
+                    new_rows.append(row_dict)
+
+                if not new_rows and last_seen_timestamp:
+                    continue
+
+                target_rows = new_rows if new_rows else list(reversed(results[:10]))
+
+                # Transmitir en orden cronológico ascendente inmediatamente sin retardos artificiales
+                for row_dict in target_rows:
+                    ts = str(row_dict.get("timestamp", ""))
+                    row_dict["timestamp"] = ts
                     driver_num = str(row_dict.get("driver_number", ""))
                     meta = DRIVER_ROSTER.get(driver_num, {})
                     row_dict["driver_code"] = meta.get("code", f"D{driver_num}")
                     row_dict["driver_name"] = f"{row_dict.get('nombre', '')} {row_dict.get('apellido', '')}".strip() or meta.get("name", f"Driver {driver_num}")
                     row_dict["team_name"] = meta.get("team", "Formula 1")
                     row_dict["team_color"] = meta.get("color", "#FFFFFF")
-                    
+
                     await manager.broadcast(row_dict)
-                    await asyncio.sleep(0.05)
+
+                if results:
+                    latest_ts = str(results[0].get("timestamp", ""))
+                    if not last_seen_timestamp or latest_ts > last_seen_timestamp:
+                        last_seen_timestamp = latest_ts
+
             except Exception:
                 # Tabla aún vacía o BigQuery no inicializado todavía
                 pass

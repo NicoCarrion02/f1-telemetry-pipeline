@@ -50,6 +50,8 @@ services:
       - BIGQUERY_DATASET=f1_insights
       - BIGQUERY_TABLE=telemetry_realtime
       - BIGQUERY_EMULATOR_HOST=http://bigquery:9050
+    volumes:
+      - ./dashboard:/app/dashboard
     depends_on:
       - bigquery
       - f1-producer
