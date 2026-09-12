@@ -136,6 +136,72 @@ def load_batch_to_bigquery(
         return False
 
 
+def sync_fastf1_cache(
+    bucket_name: str = GCS_BUCKET_NAME,
+    source_folder: str = LOCAL_RAW_PATH,
+) -> bool:
+    """
+    Sincroniza la caché de telemetría de FastF1 con Google Cloud Storage.
+    Permite que instancias en la nube (GCP/AWS/etc.) ejecuten el replay sin ser
+    bloqueadas con HTTP 403 por la CDN de Formula 1 (livetiming.formula1.com).
+    """
+    import tarfile
+
+    archive_name = "fastf1_cache_2023.tar.gz"
+    local_archive = os.path.join(source_folder, archive_name)
+    gcs_blob_path = f"cache/{archive_name}"
+
+    try:
+        from google.cloud import storage
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+
+        # Verificar si realmente existen archivos .ff1pkl en la carpeta local
+        has_pkl_files = False
+        for root, _, files in os.walk(source_folder):
+            if any(f.endswith(".ff1pkl") for f in files):
+                has_pkl_files = True
+                break
+
+        # Caso 1: Hay archivos .ff1pkl locales (entorno local) -> asegurar respaldo en GCS
+        if has_pkl_files and not os.path.exists(local_archive):
+            print("\nEmpaquetando caché local de FastF1 para respaldar en GCS Data Lake...")
+            with tarfile.open(local_archive, "w:gz") as tar:
+                year_dir = os.path.join(source_folder, "2023")
+                if os.path.exists(year_dir):
+                    tar.add(year_dir, arcname="2023")
+                sqlite_file = os.path.join(source_folder, "fastf1_http_cache.sqlite")
+                if os.path.exists(sqlite_file):
+                    tar.add(sqlite_file, arcname="fastf1_http_cache.sqlite")
+
+            print(f"Subiendo caché de FastF1 a gs://{bucket_name}/{gcs_blob_path}...")
+            blob = bucket.blob(gcs_blob_path)
+            blob.upload_from_filename(local_archive)
+            print("✅ Caché de FastF1 respaldada en GCS exitosamente.")
+            return True
+
+        # Caso 2: Estamos en la nube (no hay archivos .ff1pkl locales) -> descargar de GCS
+        elif not has_pkl_files:
+            print("\n[!] Archivos .ff1pkl no encontrados localmente. Descargando desde GCS Data Lake...")
+            blob = bucket.blob(gcs_blob_path)
+            if blob.exists():
+                print(f"Descargando gs://{bucket_name}/{gcs_blob_path} -> {local_archive}...")
+                blob.download_to_filename(local_archive)
+                print(f"Extrayendo archivos de telemetría en {source_folder}...")
+                with tarfile.open(local_archive, "r:gz") as tar:
+                    tar.extractall(path=source_folder)
+                print("✅ Archivos .ff1pkl restaurados con éxito desde GCS. Las llamadas a la CDN serán omitidas.")
+                return True
+            else:
+                print(f"Aviso: No se encontró {gcs_blob_path} en el bucket gs://{bucket_name}.")
+                return False
+
+        return True
+    except Exception as e:
+        print(f"Aviso en sincronización de caché FastF1: {e}")
+        return False
+
+
 def stream_all_drivers_telemetry(
     year: int = DEFAULT_REPLAY_YEAR,
     race: str = DEFAULT_REPLAY_RACE,
@@ -147,6 +213,9 @@ def stream_all_drivers_telemetry(
     las escuderías (Ferrari, Red Bull, Mercedes, McLaren, etc.), intercalada
     cronológicamente para alimentar el pipeline en streaming (Pub/Sub -> Spark -> BigQuery).
     """
+    # Sincronizar caché de FastF1 con GCS antes de iniciar el streaming
+    sync_fastf1_cache()
+
     print("\n" + "=" * 70)
     print(" PASO 4: STREAMING EN TIEMPO REAL - TODOS LOS PILOTOS Y ESCUDERÍAS")
     print(f" Gran Premio: {race} {year} | Sesión: {session}")
