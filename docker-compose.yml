@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  f1-producer:
+    build:
+      context: .
+      dockerfile: docker/producer.Dockerfile
+    command: ["--mode", "replay", "--driver", "16"]
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/gcp-service-account.json
+      - GCP_PROJECT_ID=f1-telemetry-ec
+      - PUB_SUB_TOPIC=f1-telemetry-topic
+    volumes:
+      - ./secrets:/app/secrets
+      - ./data/raw:/app/data/raw
+    restart: on-failure
