@@ -109,8 +109,8 @@ def process_and_load_batch_data(
                     except Exception:
                         pass
                     # Tomar lote de registros para el emulador (hasta 5000 por tabla para agilidad)
-                    sample = df.head(5000).fillna("")
-                    records = json.loads(sample.to_json(orient="records", date_format="iso"))
+                    sample = df.head(5000)
+                    records = json.loads(sample.to_json(orient="records", date_format="iso", default_handler=str))
                     errors = bq_client.insert_rows_json(table_id, records)
                     if not errors:
                         print(f"✅ Tabla '{table_name}' creada e insertada en el emulador ({len(records)} filas).")

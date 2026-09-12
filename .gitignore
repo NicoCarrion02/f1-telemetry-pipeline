@@ -1,6 +1,5 @@
 secrets/
 .env
-data/raw/*
 hadoop_temp/*
 .venv
 __pycache__
